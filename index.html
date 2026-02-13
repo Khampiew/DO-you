@@ -196,40 +196,62 @@
         e.preventDefault();
         const btn = document.getElementById('btn-save');
         const pId = document.getElementById('p-id').value;
-        btn.disabled = true; btn.innerText = "Processing...";
+        
+        btn.disabled = true; 
+        btn.innerText = "กำลังบันทึก...";
 
         try {
-            const specData = {};
-            document.querySelectorAll('#dynamic-specs-container input, #dynamic-specs-container select').forEach(el => {
-                if(el.value) specData[el.id.replace('spec-', '')] = el.value;
-            });
-
+            // ส่งเฉพาะค่าพื้นฐานที่ Database เดิมของคุณมีแน่นอน
             const productData = {
                 name: document.getElementById('p-name').value,
                 category: document.getElementById('p-category').value,
-                price: parseFloat(document.getElementById('p-price').value),
-                specs: specData
+                price: parseFloat(document.getElementById('p-price').value)
             };
 
+            // จัดการรูปภาพ (ถ้ามีการเลือกไฟล์)
             const fileInput = document.getElementById('p-image-file');
             if (fileInput.files.length > 0) {
                 const file = fileInput.files[0];
-                const fileName = `${Date.now()}_${file.name.replace(/\s/g, '_')}`;
-                await _supabase.storage.from('product-images').upload(fileName, file);
-                productData.image_url = _supabase.storage.from('product-images').getPublicUrl(fileName).data.publicUrl;
+                const fileName = `${Date.now()}_${file.name}`;
+                
+                const { error: uploadError } = await _supabase.storage
+                    .from('product-images')
+                    .upload(fileName, file);
+
+                if (!uploadError) {
+                    const { data: urlData } = _supabase.storage
+                        .from('product-images')
+                        .getPublicUrl(fileName);
+                    productData.image_url = urlData.publicUrl;
+                }
             }
 
+            // บันทึกลง Database
+            let error;
             if (pId) {
-                await _supabase.from('products').update(productData).eq('id', pId);
+                // ถ้ามี ID = แก้ไข
+                const { error: err } = await _supabase.from('products').update(productData).eq('id', pId);
+                error = err;
             } else {
+                // ถ้าไม่มี ID = เพิ่มใหม่
                 if(!productData.image_url) productData.image_url = "https://via.placeholder.com/150";
-                await _supabase.from('products').insert([productData]);
+                const { error: err } = await _supabase.from('products').insert([productData]);
+                error = err;
             }
 
+            if (error) throw error;
+
+            alert("บันทึกเรียบร้อยแล้ว!");
             closeAdminModal();
-            init();
-        } catch (err) { alert(err.message); }
-        finally { btn.disabled = false; }
+            location.reload(); // รีโหลดหน้าเว็บเพื่อให้ข้อมูลอัปเดตชัวร์ๆ
+
+        } catch (err) {
+            console.error("Database Error:", err);
+            alert("บันทึกไม่สำเร็จ: " + err.message);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "Save Changes";
+        }
     });
 
     // --- UI Helpers ---
