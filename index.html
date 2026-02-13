@@ -205,7 +205,15 @@ function formatSpecs(specs) {
 function getCompatibleMotherboards() {
     const cpu = selectedParts['CPU'];
     if (!cpu || !cpu.specs || !cpu.specs.socket) return allProducts.filter(p => p.category === 'Motherboard');
-    return allProducts.filter(p => p.category === 'Motherboard' && p.specs && p.specs['supported-ram']);
+    const cpuSocket = cpu.specs.socket;
+    return allProducts.filter(p => p.category === 'Motherboard' && p.specs && p.specs.socket === cpuSocket);
+}
+
+function getCompatibleCPUs() {
+    const mobo = selectedParts['Motherboard'];
+    if (!mobo || !mobo.specs || !mobo.specs.socket) return allProducts.filter(p => p.category === 'CPU');
+    const moboSocket = mobo.specs.socket;
+    return allProducts.filter(p => p.category === 'CPU' && p.specs && p.specs.socket === moboSocket);
 }
 
 function getCompatibleRAM() {
@@ -218,7 +226,10 @@ function getCompatibleRAM() {
 function calculatePowerEstimate() {
     let power = 50; // Base system power
     if (selectedParts['CPU'] && selectedParts['CPU'].specs) {
-        const cores = selectedParts['CPU'].specs.cores ? parseInt(selectedParts['CPU'].specs.cores) : 0;
+        // Extract cores number from format like "8-Core / 16-Thread"
+        const coresStr = selectedParts['CPU'].specs.cores || '';
+        const coresMatch = coresStr.match(/(\d+)/);
+        const cores = coresMatch ? parseInt(coresMatch[1]) : 0;
         power += Math.max(65, cores * 5); // Rough TDP estimate
     }
     if (selectedParts['GPU'] && selectedParts['GPU'].specs) {
@@ -478,6 +489,16 @@ function renderDynamicSpecs() {
             html = `
                 <div class="grid grid-cols-2 gap-3">
                     <div>
+                        <label class="${labelStyle}">Socket</label>
+                        <select id="spec-socket" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>LGA1700</option>
+                            <option>LGA1200</option>
+                            <option>AM5</option>
+                            <option>AM4</option>
+                        </select>
+                    </div>
+                    <div>
                         <label class="${labelStyle}">Generation</label>
                         <select id="spec-generation" class="${inputStyle}">
                             <option value="">Select</option>
@@ -488,7 +509,7 @@ function renderDynamicSpecs() {
                             <option>Gen 14</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="col-span-2">
                         <label class="${labelStyle}">Cores/Threads</label>
                         <input type="text" id="spec-cores" class="${inputStyle}" placeholder="e.g., 8-Core / 16-Thread">
                     </div>
@@ -660,7 +681,12 @@ function updatePickerList(cat) {
     let filtered = allProducts.filter(p => p.category === cat);
     
     // Apply compatibility filtering
-    if (cat === 'Motherboard') {
+    if (cat === 'CPU') {
+        const mobo = selectedParts['Motherboard'];
+        if (mobo && mobo.specs && mobo.specs.socket) {
+            filtered = filtered.filter(p => p.specs && p.specs.socket === mobo.specs.socket);
+        }
+    } else if (cat === 'Motherboard') {
         const cpu = selectedParts['CPU'];
         if (cpu && cpu.specs && cpu.specs.socket) {
             filtered = filtered.filter(p => p.specs && p.specs.socket === cpu.specs.socket);
