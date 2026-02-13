@@ -1,4 +1,4 @@
-<!DOCTYPE html> <html lang="th"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> <title>PC MASTER PRO - Ultimate Builder</title> <script src="https://cdn.tailwindcss.com"></script> <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Kanit:wght@300;400;600&display=swap" rel="stylesheet"> <style> body { font-family: 'Kanit', sans-serif; background: #020617; color: #f8fafc; scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; } .font-gaming { font-family: 'Orbitron', sans-serif; } .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); } .neon-border { border: 1px solid #22d3ee; box-shadow: 0 0 15px rgba(34, 211, 238, 0.3); } .tab-active { color: #22d3ee; border-bottom: 3px solid #22d3ee; } .animate-fade-in { animation: fadeIn 0.3s ease forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } #category-container::-webkit-scrollbar { display: none; } .delete-btn { position: absolute; top: 10px; right: 10px; } </style> </head> <body class="min-h-screen pb-10">
+<!DOCTYPE html> <html lang="th"> <head> <meta charset="UTF-8"> <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"> <title>PC MASTER PRO - Ultimate Builder</title> <script src="https://cdn.tailwindcss.com"></script> <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Kanit:wght@300;400;600&display=swap" rel="stylesheet"> <style> body { font-family: 'Kanit', sans-serif; background: #020617; color: #f8fafc; scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; } .font-gaming { font-family: 'Orbitron', sans-serif; } .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); } .neon-border { border: 1px solid #22d3ee; box-shadow: 0 0 15px rgba(34, 211, 238, 0.3); } .tab-active { color: #22d3ee; border-bottom: 3px solid #22d3ee; } .animate-fade-in { animation: fadeIn 0.3s ease forwards; } @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } } #category-container::-webkit-scrollbar { display: none; } .delete-btn { position: absolute; top: 10px; right: 10px; } </style> <!-- Supabase CDN (replace with your project's URL and anon key in the script below) --> <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js/dist/umd/supabase.min.js"></script> </head> <body class="min-h-screen pb-10">
   <nav class="glass sticky top-0 z-50 px-4 md:px-8 py-4 flex justify-between items-center mb-6">
     <div class="text-lg md:text-2xl font-gaming font-bold text-cyan-400 tracking-widest uppercase cursor-pointer" onclick="location.reload()">PC MASTER</div>
     <div class="flex gap-3 md:gap-6 items-center">
@@ -105,6 +105,13 @@ const categories = ["CPU", "Motherboard", "GPU", "RAM", "PSU", "Case", "Storage"
 const STORAGE_KEY = "pc_master_products";
 const BUILDER_KEY = "pc_master_builder";
 
+// ---------- Supabase config (REPLACE these with your project's values) ----------
+const SUPABASE_URL = "https://mscglrrjkvfzumfudmmh.supabase.co"; // replace
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1zY2dscnJqa3ZmenVtZnVkbW1oIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5NDE0MzcsImV4cCI6MjA4NjUxNzQzN30.Cy_ZJKEsbErW_97y-ddFTas_ZNe-OH3vzE7QvuRH__A"; // replace
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let productsSubscription = null;
+
+
 // ============ LocalStorage Functions ============
 function saveProducts() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(allProducts));
@@ -129,11 +136,44 @@ function generateId() {
 }
 
 // ============ Initialize ============
-function init() {
-    allProducts = loadProducts();
+async function fetchProductsFromSupabase() {
+    try {
+        const { data, error } = await supabaseClient
+            .from('products')
+            .select('*')
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        allProducts = data || [];
+        renderCategoryButtons();
+        filterCatalog('All');
+
+        // Setup realtime subscription once
+        if (!productsSubscription) {
+            try {
+                productsSubscription = supabaseClient
+                    .channel('public:products')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, payload => {
+                        // Re-fetch on any change
+                        fetchProductsFromSupabase();
+                    })
+                    .subscribe();
+            } catch (subErr) {
+                // Fallback: ignore subscription errors
+                console.warn('Realtime subscription failed', subErr);
+            }
+        }
+    } catch (err) {
+        console.error('Failed to fetch products from Supabase:', err.message || err);
+        // fallback to localStorage if available
+        allProducts = loadProducts();
+        renderCategoryButtons();
+        filterCatalog('All');
+    }
+}
+
+async function init() {
+    await fetchProductsFromSupabase();
     selectedParts = loadBuilder();
-    renderCategoryButtons();
-    filterCatalog('All');
     renderBuilderSlots();
     updateTotal();
 }
@@ -203,11 +243,15 @@ function openAdminModal() {
     document.getElementById('admin-modal').classList.remove('hidden');
 }
 
-function deleteProduct(productId) {
-    if (confirm("ลบสินค้านี้ใช่หรือไม่?")) {
-        allProducts = allProducts.filter(p => p.id !== productId);
-        saveProducts();
-        filterCatalog('All');
+async function deleteProduct(productId) {
+    if (!confirm("ลบสินค้านี้ใช่หรือไม่?")) return;
+    try {
+        if (!supabaseClient) throw new Error('Supabase client not configured');
+        const { error } = await supabaseClient.from('products').delete().eq('id', productId);
+        if (error) throw error;
+        await fetchProductsFromSupabase();
+    } catch (err) {
+        alert('ผิดพลาด: ' + (err.message || JSON.stringify(err)));
     }
 }
 
@@ -277,29 +321,48 @@ document.getElementById('product-form').addEventListener('submit', async (e) => 
     }
 });
 
-function saveProductToStorage(pId, productData, btn) {
+async function saveProductToStorage(pId, productData, btn) {
     try {
+        if (!supabaseClient) throw new Error('Supabase client not configured');
+
         if (pId) {
-            // Update existing
-            const index = allProducts.findIndex(p => p.id === pId);
-            if (index !== -1) {
-                allProducts[index] = { ...allProducts[index], ...productData };
-            }
+            // Update existing row
+            const { data, error } = await supabaseClient
+                .from('products')
+                .update({
+                    name: productData.name,
+                    category: productData.category,
+                    price: productData.price,
+                    image_url: productData.image_url,
+                    specs: productData.specs
+                })
+                .eq('id', pId)
+                .select()
+                .single();
+            if (error) throw error;
         } else {
-            // Add new
-            productData.id = generateId();
-            allProducts.push(productData);
+            // Insert new row
+            const insertObj = {
+                name: productData.name,
+                category: productData.category,
+                price: productData.price,
+                image_url: productData.image_url,
+                specs: productData.specs
+            };
+            const { data, error } = await supabaseClient.from('products').insert([insertObj]).select().single();
+            if (error) throw error;
         }
 
-        saveProducts();
         alert("สำเร็จ!");
         closeAdminModal();
-        filterCatalog('All');
+        await fetchProductsFromSupabase();
     } catch (err) {
-        alert("ผิดพลาด: " + err.message);
+        alert("ผิดพลาด: " + (err.message || JSON.stringify(err)));
     } finally {
-        btn.disabled = false;
-        btn.innerText = "Save Changes";
+        if (btn) {
+            btn.disabled = false;
+            btn.innerText = "Save Changes";
+        }
     }
 }
 
@@ -313,16 +376,105 @@ function renderDynamicSpecs() {
     
     switch(cat) {
         case 'CPU':
-            html = `<div><label class="${labelStyle}">Cores/Threads</label><input type="text" id="spec-cores" class="${inputStyle}" placeholder="e.g., 8-Core / 16-Thread"></div>`;
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Generation</label>
+                        <select id="spec-generation" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>Gen 10</option>
+                            <option>Gen 11</option>
+                            <option>Gen 12</option>
+                            <option>Gen 13</option>
+                            <option>Gen 14</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">Cores/Threads</label>
+                        <input type="text" id="spec-cores" class="${inputStyle}" placeholder="e.g., 8-Core / 16-Thread">
+                    </div>
+                </div>`;
+            break;
+        case 'Motherboard':
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Socket</label>
+                        <input type="text" id="spec-socket" class="${inputStyle}" placeholder="e.g., LGA1700, AM5">
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">Supported RAM</label>
+                        <select id="spec-supported-ram" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>DDR4</option>
+                            <option>DDR5</option>
+                        </select>
+                    </div>
+                </div>`;
             break;
         case 'GPU':
             html = `<div><label class="${labelStyle}">VRAM</label><input type="text" id="spec-vram" class="${inputStyle}" placeholder="e.g., 8GB GDDR6"></div>`;
             break;
         case 'RAM':
-            html = `<div><label class="${labelStyle}">Capacity</label><input type="text" id="spec-capacity" class="${inputStyle}" placeholder="e.g., 16GB DDR4"></div>`;
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Capacity</label>
+                        <input type="text" id="spec-capacity" class="${inputStyle}" placeholder="e.g., 16GB">
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">RAM Type</label>
+                        <select id="spec-ram-type" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>DDR3</option>
+                            <option>DDR4</option>
+                            <option>DDR5</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="${labelStyle}">Bus Speed</label>
+                        <input type="text" id="spec-bus-speed" class="${inputStyle}" placeholder="e.g., 3200 MHz">
+                    </div>
+                </div>`;
+            break;
+        case 'PSU':
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Wattage</label>
+                        <input type="text" id="spec-wattage" class="${inputStyle}" placeholder="e.g., 650W">
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">80 Plus Rating (optional)</label>
+                        <select id="spec-80plus" class="${inputStyle}">
+                            <option value="">Unspecified</option>
+                            <option>80 Plus</option>
+                            <option>80 Plus Bronze</option>
+                            <option>80 Plus Silver</option>
+                            <option>80 Plus Gold</option>
+                            <option>80 Plus Platinum</option>
+                            <option>80 Plus Titanium</option>
+                        </select>
+                    </div>
+                </div>`;
             break;
         case 'Storage':
-            html = `<div><label class="${labelStyle}">Capacity</label><input type="text" id="spec-storage-capacity" class="${inputStyle}" placeholder="e.g., 1TB SSD"></div>`;
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Type</label>
+                        <select id="spec-storage-type" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>M.2 NVMe</option>
+                            <option>SATA SSD</option>
+                            <option>HDD</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">Capacity</label>
+                        <input type="text" id="spec-storage-capacity" class="${inputStyle}" placeholder="e.g., 1TB">
+                    </div>
+                </div>`;
             break;
         default:
             html = `<p class="text-[10px] text-gray-500 italic">No additional specs required.</p>`;
