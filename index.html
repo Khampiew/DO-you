@@ -17,14 +17,15 @@
             <div id="category-container" class="flex gap-2 overflow-x-auto pb-2 w-full whitespace-nowrap scroll-smooth"></div>
         </div>
         <div class="flex gap-3 mb-4 flex-wrap items-center">
-            <input type="text" id="catalog-search" placeholder="Search products..." class="flex-1 min-w-[200px] bg-slate-800 border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-cyan-400 transition" oninput="applySearchAndSort()">
-            <select id="catalog-sort" onchange="applySearchAndSort()" class="bg-slate-800 border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-cyan-400">
+            <input type="text" id="catalog-search" placeholder="Search products..." class="flex-1 min-w-[200px] bg-slate-900 border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-cyan-400 transition" oninput="applySearchAndSort()">
+            <select id="catalog-sort" onchange="applySearchAndSort()" class="bg-slate-900 border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-cyan-400">
                 <option value="">Sort by</option>
                 <option value="price-asc">Price: Low to High</option>
                 <option value="price-desc">Price: High to Low</option>
             </select>
         </div>
-        <div id="product-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-20"></div>
+        <div id="product-grid" class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6"></div>
+        <div id="pagination" class="flex justify-center items-center gap-2 mt-4 mb-12"></div>
     </section>
 
     <section id="section-builder" class="hidden">
@@ -64,12 +65,12 @@
             <input type="hidden" id="p-id">
             <div>
                 <label class="block text-[10px] text-gray-400 mb-1 uppercase font-bold">Product Name</label>
-                <input type="text" id="p-name" class="w-full bg-slate-800 border border-gray-700 p-3 rounded-lg text-white focus:border-cyan-400 outline-none text-sm transition" required>
+                <input type="text" id="p-name" class="w-full bg-slate-900 border border-gray-700 p-3 rounded-lg text-white focus:border-cyan-400 outline-none text-sm transition" required>
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-[10px] text-gray-400 mb-1 uppercase font-bold">Category</label>
-                    <select id="p-category" onchange="renderDynamicSpecs()" class="w-full bg-slate-800 border border-gray-700 p-3 rounded-lg text-white text-sm outline-none focus:border-cyan-400">
+                    <select id="p-category" onchange="renderDynamicSpecs()" class="w-full bg-slate-900 border border-gray-700 p-3 rounded-lg text-white text-sm outline-none focus:border-cyan-400">
                         <option value="CPU">CPU</option>
                         <option value="Motherboard">Motherboard</option>
                         <option value="GPU">GPU</option>
@@ -79,11 +80,12 @@
                         <option value="Storage">Storage</option>
                         <option value="CPU Cooler">CPU Cooler</option>
                         <option value="Case Fan">Case Fan</option>
+                        <option value="Monitor">Monitor</option>
                     </select>
                 </div>
                 <div>
                     <label class="block text-[10px] text-gray-400 mb-1 uppercase font-bold">Price (₭)</label>
-                    <input type="number" id="p-price" class="w-full bg-slate-800 border border-gray-700 p-3 rounded-lg text-white text-sm focus:border-cyan-400 outline-none" required>
+                    <input type="number" id="p-price" class="w-full bg-slate-900 border border-gray-700 p-3 rounded-lg text-white text-sm focus:border-cyan-400 outline-none" required>
                 </div>
             </div>
             <div id="dynamic-specs-container" class="space-y-4 pt-2"></div>
@@ -116,9 +118,12 @@
 <script>
 let allProducts = [];
 let selectedParts = {};
-const categories = ["CPU", "Motherboard", "GPU", "RAM", "PSU", "Case", "Storage", "CPU Cooler", "Case Fan"];
+const categories = ["CPU", "Motherboard", "GPU", "RAM", "PSU", "Case", "Storage", "CPU Cooler", "Case Fan", "Monitor"];
 const STORAGE_KEY = "pc_master_products";
 const BUILDER_KEY = "pc_master_builder";
+let currentCatalog = 'All';
+let currentPage = 1;
+const PAGE_SIZE = 10;
 
 // ---------- Supabase config (REPLACE these with your project's values) ----------
 const SUPABASE_URL = "https://mscglrrjkvfzumfudmmh.supabase.co"; // replace
@@ -232,7 +237,7 @@ function calculatePowerEstimate() {
         const coresStr = selectedParts['CPU'].specs.cores || '';
         const coresMatch = coresStr.match(/(\d+)/);
         const cores = coresMatch ? parseInt(coresMatch[1]) : 0;
-        power += Math.max(65, cores * 5); // Rough TDP estimate
+        power += Math.max(65, cores * 5); // Rough CPU power estimate
     }
     if (selectedParts['GPU'] && selectedParts['GPU'].specs) {
         const vram = selectedParts['GPU'].specs.vram ? parseInt(selectedParts['GPU'].specs.vram) : 0;
@@ -299,25 +304,35 @@ function sortProducts(products, sortOrder) {
 function filterCatalog(targetCat, searchTerm = '', sortOrder = '') {
     const grid = document.getElementById('product-grid');
     let filtered = targetCat === 'All' ? allProducts : allProducts.filter(p => p.category === targetCat);
-    filtered = filterProductsBySearch(filtered, searchTerm);
-    filtered = sortProducts(filtered, sortOrder);
-    
-    grid.innerHTML = filtered.map(p => `
-        <div class="glass p-3 md:p-5 rounded-2xl flex flex-col group border border-white/5 relative animate-fade-in transition-all hover:neon-border">
-            <button onclick="deleteProduct('${p.id}')" class="delete-btn bg-red-600/80 hover:bg-red-600 text-white px-2 py-1 rounded text-[9px] font-bold opacity-0 group-hover:opacity-100 transition">DELETE</button>
-            <div class="bg-white/5 rounded-xl p-2 mb-3 h-32 md:h-40 flex items-center justify-center overflow-hidden">
-                <img src="${p.image_url}" class="max-h-full object-contain group-hover:scale-110 transition duration-500">
+    // apply search and sort
+    const search = searchTerm || (document.getElementById('catalog-search') ? document.getElementById('catalog-search').value : '');
+    const sort = sortOrder || (document.getElementById('catalog-sort') ? document.getElementById('catalog-sort').value : '');
+    filtered = filterProductsBySearch(filtered, search);
+    filtered = sortProducts(filtered, sort);
+
+    // pagination
+    const totalItems = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const paged = filtered.slice(start, start + PAGE_SIZE);
+
+    grid.innerHTML = paged.map(p => `
+        <div class="p-3 md:p-5 rounded-2xl flex flex-col group border border-gray-200 relative animate-fade-in transition-all hover:shadow-sm bg-slate-950/80">
+            <button onclick="deleteProduct('${p.id}')" class="delete-btn bg-red-100/80 hover:bg-red-200 text-red-600 px-2 py-1 rounded text-[11px] font-semibold opacity-0 group-hover:opacity-100 transition">DEL</button>
+            <div class="rounded-xl p-2 mb-3 h-32 md:h-40 flex items-center justify-center overflow-hidden" style="background: rgba(255,255,255,0.03);">
+                <img src="${p.image_url}" class="max-h-full object-contain transition duration-500">
             </div>
-            <div class="text-[8px] text-cyan-400 font-bold uppercase mb-1 tracking-widest">${p.category}</div>
-            <div class="text-[11px] md:text-sm text-white font-bold mb-2 h-8 line-clamp-2 leading-tight">${p.name}</div>
-            <div class="text-[10px] text-gray-400 mb-3 line-clamp-2 h-8">${formatSpecs(p.specs)}</div>
+            <div class="text-[10px] font-bold uppercase mb-1 tracking-widest text-cyan-400">${p.category}</div>
+            <div class="text-[15px] md:text-xl text-slate-100 font-extrabold mb-2 h-8 line-clamp-2 leading-tight product-card-title">${p.name}</div>
+            <div class="text-[12px] text-slate-400 mb-3 line-clamp-2 h-8">${formatSpecs(p.specs)}</div>
             <div class="flex justify-between items-end mt-auto">
-                <div class="text-sm md:text-lg text-green-400 font-bold font-gaming">${Number(p.price).toLocaleString()} <span class="text-[10px]">₭</span></div>
-                <button onclick="openEditModal('${p.id}')" class="bg-cyan-600/20 hover:bg-cyan-600 text-cyan-400 hover:text-white px-3 py-1 rounded-lg border border-cyan-500/50 transition-all text-[9px] font-bold uppercase">
-                    EDIT
-                </button>
+                <div class="text-sm md:text-lg text-emerald-400 font-gaming font-bold">${Number(p.price).toLocaleString()} <span class="text-[12px]">₭</span></div>
+                <button onclick="openEditModal('${p.id}')" class="bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-600 hover:text-white px-3 py-2 rounded-lg transition-all text-[12px] font-semibold">Edit</button>
             </div>
         </div>`).join('');
+
+    renderPagination(totalItems);
 }
 
 // ============ Admin & Edit Logic ============
@@ -490,7 +505,7 @@ async function saveProductToStorage(pId, productData, btn) {
 function renderDynamicSpecs() {
     const cat = document.getElementById('p-category').value;
     const container = document.getElementById('dynamic-specs-container');
-    const inputStyle = "w-full bg-slate-800 border border-gray-700 p-3 rounded-lg text-white text-sm outline-none focus:border-cyan-400 transition";
+    const inputStyle = "w-full bg-slate-900 border border-gray-700 p-3 rounded-lg text-white text-sm outline-none focus:border-cyan-400 transition";
     const labelStyle = "block text-[10px] text-gray-400 mb-1 uppercase font-bold";
     let html = "";
     
@@ -658,6 +673,28 @@ function renderDynamicSpecs() {
                     </div>
                 </div>`;
             break;
+            case 'Monitor':
+                html = `
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="${labelStyle}">Resolution</label>
+                            <input type="text" id="spec-resolution" class="${inputStyle}" placeholder="e.g., 2560x1440">
+                        </div>
+                        <div>
+                            <label class="${labelStyle}">Refresh Rate</label>
+                            <input type="text" id="spec-refresh" class="${inputStyle}" placeholder="e.g., 144Hz">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="${labelStyle}">Panel Type</label>
+                            <select id="spec-panel" class="${inputStyle}">
+                                <option value="">Select</option>
+                                <option>IPS</option>
+                                <option>VA</option>
+                                <option>TN</option>
+                            </select>
+                        </div>
+                    </div>`;
+                break;
         default:
             html = `<p class="text-[10px] text-gray-500 italic">No additional specs required.</p>`;
     }
@@ -674,8 +711,8 @@ function applySearchAndSort() {
 
 function renderCategoryButtons() {
     const container = document.getElementById('category-container');
-    container.innerHTML = `<button onclick="resetCatalogFilters('All')" class="px-5 py-2 glass rounded-full text-[10px] font-bold uppercase shrink-0 hover:border-cyan-500 transition">All Items</button>` +
-        categories.map(cat => `<button onclick="resetCatalogFilters('${cat}')" class="px-5 py-2 glass rounded-full text-[10px] font-bold uppercase shrink-0 hover:border-cyan-500 transition">${cat}</button>`).join('');
+    container.innerHTML = `<button onclick="resetCatalogFilters('All')" class="px-3 py-2 glass rounded-full text-[11px] font-semibold uppercase shrink-0 hover:border-gray-300 transition">All</button>` +
+        categories.map(cat => `<button onclick="resetCatalogFilters('${cat}')" class="px-3 py-2 glass rounded-full text-[11px] font-semibold uppercase shrink-0 hover:border-gray-300 transition">${cat}</button>`).join('');
 }
 
 function resetCatalogFilters(cat) {
@@ -683,25 +720,37 @@ function resetCatalogFilters(cat) {
     const sortSelect = document.getElementById('catalog-sort');
     if (searchInput) searchInput.value = '';
     if (sortSelect) sortSelect.value = '';
+    currentCatalog = cat;
+    currentPage = 1;
     filterCatalog(cat);
 }
 
 // ============ Builder Logic ============
+function placeholderAvatar(cat) {
+    const label = (cat || '').split(' ').map(s => s[0]).slice(0,2).join('').toUpperCase();
+    return `<div class="w-10 h-10 bg-gray-100 rounded flex items-center justify-center text-xs font-semibold text-gray-700">${label}</div>`;
+}
+
+function selectPart(category) {
+    // alias to open the part picker
+    openPicker(category);
+}
+
 function renderBuilderSlots() {
     const container = document.getElementById('builder-slots');
     container.innerHTML = categories.map(cat => {
         const item = selectedParts[cat];
-        return `<div class="glass p-3 rounded-2xl flex justify-between items-center border-l-4 ${item ? 'border-cyan-400' : 'border-gray-700'} animate-fade-in">
+        return `<div class="p-3 rounded-2xl flex justify-between items-center border-l-4 ${item ? 'border-cyan-200' : 'border-gray-200'} animate-fade-in bg-slate-950/80">
             <div class="flex items-center gap-3">
-                ${item ? `<img src="${item.image_url}" class="w-10 h-10 object-contain bg-white rounded p-1">` : `<div class="w-10 h-10 bg-slate-800 rounded flex items-center justify-center text-[10px] text-gray-600 font-gaming">?</div>`}
+                ${item ? `<img src="${item.image_url}" class="w-10 h-10 object-contain bg-white rounded p-1">` : placeholderAvatar(cat)}
                 <div>
-                    <div class="text-[8px] text-cyan-500 font-bold uppercase">${cat}</div>
-                    <div class="text-[10px] md:text-xs truncate max-w-[150px] ${item ? 'text-white font-bold' : 'text-gray-600 italic'}">${item ? item.name : 'Select part...'}</div>
+                    <div class="text-[10px] text-gray-600 font-semibold uppercase">${cat}</div>
+                    <div class="text-[13px] truncate max-w-[180px] ${item ? 'text-slate-100 font-extrabold' : 'text-gray-500 italic'}">${item ? item.name : 'Select part...'}</div>
                 </div>
             </div>
             <div class="flex gap-2 items-center">
-                <button onclick="openPicker('${cat}')" class="bg-slate-800 hover:bg-cyan-600 px-4 py-2 rounded-xl text-[9px] font-bold uppercase transition border border-white/5">${item ? 'Change' : 'Add'}</button>
-                ${item ? `<button onclick="removeItem('${cat}')" class="bg-red-900/30 hover:bg-red-700 text-red-400 px-3 py-2 rounded-xl text-[9px] font-bold uppercase transition border border-red-500/50">✕</button>` : ''}
+                <button onclick="selectPart('${cat}')" class="bg-transparent border border-cyan-500/50 text-cyan-400 hover:bg-cyan-600 hover:text-white px-4 py-2 rounded-xl text-[12px] font-semibold transition">${item ? 'Change' : 'Add'}</button>
+                ${item ? `<button onclick="removeItem('${cat}')" class="bg-red-50 hover:bg-red-100 text-red-600 px-3 py-2 rounded-xl text-[12px] font-semibold transition">✕</button>` : ''}
             </div>
         </div>`;
     }).join('');
@@ -716,13 +765,13 @@ function openPicker(cat) {
     const oldSearch = modalDiv.querySelector('[data-search-div]');
     if (oldSearch) oldSearch.remove();
     
-    // Add search and sort header
+    // Add search and sort header (light theme)
     const searchDiv = document.createElement('div');
     searchDiv.setAttribute('data-search-div', '1');
     searchDiv.className = 'p-4 flex gap-2 border-b border-gray-700 sticky top-12 z-10 bg-slate-900';
     searchDiv.innerHTML = `
-        <input type="text" id="picker-search" placeholder="Search..." class="flex-1 bg-slate-800 border border-gray-700 p-2 rounded-lg text-white text-xs outline-none focus:border-cyan-400" oninput="updatePickerList('${cat}')">
-        <select id="picker-sort" onchange="updatePickerList('${cat}')" class="bg-slate-800 border border-gray-700 p-2 rounded-lg text-white text-xs outline-none focus:border-cyan-400">
+        <input type="text" id="picker-search" placeholder="Search..." class="flex-1 bg-slate-900 border border-gray-700 p-2 rounded-lg text-white text-xs outline-none focus:border-cyan-400" oninput="updatePickerList('${cat}')">
+        <select id="picker-sort" onchange="updatePickerList('${cat}')" class="bg-slate-900 border border-gray-700 p-2 rounded-lg text-white text-xs outline-none focus:border-cyan-400">
             <option value="">Sort</option>
             <option value="price-asc">Price Low</option>
             <option value="price-desc">Price High</option>
@@ -772,10 +821,40 @@ function updatePickerList(cat) {
     filtered = sortProducts(filtered, sortOrder);
     
     if (filtered.length === 0) {
-        list.innerHTML = `<div class="col-span-2 text-center text-gray-400 py-8">ยังไม่มีสินค้าในหมวด ${cat}</div>`;
+        list.innerHTML = `<div class="col-span-2 text-center text-gray-400 py-8">No products in ${cat}</div>`;
     } else {
-        list.innerHTML = filtered.map(p => `<div class="glass rounded-xl p-3 flex gap-3 items-center border border-white/5 hover:border-cyan-500/50 transition"><img src="${p.image_url}" class="w-14 h-14 object-contain rounded bg-white p-1"><div class="flex-1 overflow-hidden"><div class="font-bold text-xs text-white truncate">${p.name}</div><div class="text-[9px] text-gray-400 line-clamp-1">${formatSpecs(p.specs)}</div><div class="text-green-400 font-bold text-xs mt-1">${Number(p.price).toLocaleString()} ₭</div></div><button onclick="confirmSelection('${cat}', '${p.id}')" class="bg-cyan-600 px-3 py-2 rounded-lg text-[10px] font-bold uppercase hover:bg-cyan-500 transition shadow-lg">Select</button></div>`).join('');
+        list.innerHTML = filtered.map(p => `<div class="rounded-xl p-3 flex gap-3 items-center border border-gray-200 hover:shadow-sm transition bg-slate-950/80">
+            <img src="${p.image_url}" class="w-14 h-14 object-contain rounded bg-white p-1">
+            <div class="flex-1 overflow-hidden">
+                <div class="text-sm font-extrabold text-slate-100 truncate">${p.name}</div>
+                <div class="text-[12px] text-slate-400 line-clamp-1">${formatSpecs(p.specs)}</div>
+                <div class="text-emerald-400 font-gaming font-bold text-sm mt-1">${Number(p.price).toLocaleString()} ₭</div>
+            </div>
+            <button onclick="confirmSelection('${cat}', '${p.id}')" class="bg-transparent border border-cyan-500/50 text-cyan-400 px-3 py-2 rounded-lg hover:bg-cyan-600 hover:text-white transition">Select</button>
+        </div>`).join('');
     }
+}
+
+// Pagination renderer
+function renderPagination(totalItems) {
+    const container = document.getElementById('pagination');
+    const totalPages = Math.max(1, Math.ceil(totalItems / PAGE_SIZE));
+    let html = '';
+    html += `<button onclick="changePage(${Math.max(1, currentPage-1)})" class="px-3 py-1 rounded bg-transparent border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600 hover:text-white">Previous</button>`;
+    for (let i=1;i<=totalPages;i++){
+        if (i===currentPage) {
+            html += `<button onclick="changePage(${i})" class="px-3 py-1 rounded bg-cyan-600 text-white">${i}</button>`;
+        } else {
+            html += `<button onclick="changePage(${i})" class="px-3 py-1 rounded bg-transparent border border-cyan-500/20 text-cyan-300 hover:bg-cyan-600 hover:text-white">${i}</button>`;
+        }
+    }
+    html += `<button onclick="changePage(${Math.min(totalPages, currentPage+1)})" class="px-3 py-1 rounded bg-transparent border border-cyan-500/30 text-cyan-300 hover:bg-cyan-600 hover:text-white">Next</button>`;
+    container.innerHTML = html;
+}
+
+function changePage(n){
+    currentPage = n;
+    filterCatalog(currentCatalog);
 }
 
 function confirmSelection(cat, id) {
@@ -822,7 +901,7 @@ function updateTotal() {
     // Add power estimate
     const powerDiv = document.createElement('div');
     powerDiv.setAttribute('data-power-div', '1');
-    powerDiv.className = 'text-[10px] text-gray-400 mt-2 p-2 bg-slate-800/50 rounded';
+    powerDiv.className = 'text-[10px] text-gray-600 mt-2 p-2 bg-gray-50 rounded';
     powerDiv.innerHTML = `⚡ Est. Power: ${powerEstimate}W`;
     container.parentElement.appendChild(powerDiv);
     
@@ -865,7 +944,11 @@ async function saveImage() {
         return;
     }
     try {
-        const canvas = await html2canvas(el, { scale: 2, backgroundColor: null });
+        // ensure white background for export
+        const origBg = el.style.backgroundColor;
+        el.style.backgroundColor = '#ffffff';
+        const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' });
+        el.style.backgroundColor = origBg;
         const dataUrl = canvas.toDataURL('image/png');
         const link = document.createElement('a');
         link.href = dataUrl;
