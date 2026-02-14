@@ -77,6 +77,8 @@
                         <option value="PSU">PSU</option>
                         <option value="Case">Case</option>
                         <option value="Storage">Storage</option>
+                        <option value="CPU Cooler">CPU Cooler</option>
+                        <option value="Case Fan">Case Fan</option>
                     </select>
                 </div>
                 <div>
@@ -114,7 +116,7 @@
 <script>
 let allProducts = [];
 let selectedParts = {};
-const categories = ["CPU", "Motherboard", "GPU", "RAM", "PSU", "Case", "Storage"];
+const categories = ["CPU", "Motherboard", "GPU", "RAM", "PSU", "Case", "Storage", "CPU Cooler", "Case Fan"];
 const STORAGE_KEY = "pc_master_products";
 const BUILDER_KEY = "pc_master_builder";
 
@@ -244,6 +246,7 @@ function getCompatibilityStatus() {
     const cpu = selectedParts['CPU'];
     const mobo = selectedParts['Motherboard'];
     const ram = selectedParts['RAM'];
+    const cooler = selectedParts['CPU Cooler'];
     
     if (cpu && mobo && cpu.specs && mobo.specs) {
         if (cpu.specs.socket && mobo.specs.socket && cpu.specs.socket !== mobo.specs.socket) {
@@ -256,6 +259,13 @@ function getCompatibilityStatus() {
         if (mobo.specs['supported-ram'] && ram.specs['ram-type'] && mobo.specs['supported-ram'] !== ram.specs['ram-type']) {
             status.isCompatible = false;
             status.warnings.push(`RAM Type Mismatch: ${mobo.specs['supported-ram']} vs ${ram.specs['ram-type']}`);
+        }
+    }
+    
+    if (cpu && cooler && cpu.specs && cooler.specs) {
+        if (cpu.specs.socket && cooler.specs.socket && cpu.specs.socket !== cooler.specs.socket) {
+            status.isCompatible = false;
+            status.warnings.push(`Cooler Socket Mismatch: ${cpu.specs.socket} vs ${cooler.specs.socket}`);
         }
     }
     
@@ -596,6 +606,58 @@ function renderDynamicSpecs() {
                     </div>
                 </div>`;
             break;
+        case 'CPU Cooler':
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Cooler Type</label>
+                        <select id="spec-cooler-type" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>Air</option>
+                            <option>Liquid</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">Socket Support</label>
+                        <select id="spec-socket" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>LGA1700</option>
+                            <option>LGA1200</option>
+                            <option>AM5</option>
+                            <option>AM4</option>
+                        </select>
+                    </div>
+                </div>`;
+            break;
+        case 'Case Fan':
+            html = `
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="${labelStyle}">Fan Size</label>
+                        <select id="spec-fan-size" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>80mm</option>
+                            <option>92mm</option>
+                            <option>120mm</option>
+                            <option>140mm</option>
+                            <option>200mm</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="${labelStyle}">Lighting</label>
+                        <select id="spec-lighting" class="${inputStyle}">
+                            <option value="">Select</option>
+                            <option>RGB</option>
+                            <option>ARGB</option>
+                            <option>None</option>
+                        </select>
+                    </div>
+                    <div class="col-span-2">
+                        <label class="${labelStyle}">RPM & Airflow</label>
+                        <input type="text" id="spec-rpm-airflow" class="${inputStyle}" placeholder="e.g., 1200 RPM, 85 CFM">
+                    </div>
+                </div>`;
+            break;
         default:
             html = `<p class="text-[10px] text-gray-500 italic">No additional specs required.</p>`;
     }
@@ -637,7 +699,10 @@ function renderBuilderSlots() {
                     <div class="text-[10px] md:text-xs truncate max-w-[150px] ${item ? 'text-white font-bold' : 'text-gray-600 italic'}">${item ? item.name : 'Select part...'}</div>
                 </div>
             </div>
-            <button onclick="openPicker('${cat}')" class="bg-slate-800 hover:bg-cyan-600 px-4 py-2 rounded-xl text-[9px] font-bold uppercase transition border border-white/5">${item ? 'Change' : 'Add'}</button>
+            <div class="flex gap-2 items-center">
+                <button onclick="openPicker('${cat}')" class="bg-slate-800 hover:bg-cyan-600 px-4 py-2 rounded-xl text-[9px] font-bold uppercase transition border border-white/5">${item ? 'Change' : 'Add'}</button>
+                ${item ? `<button onclick="removeItem('${cat}')" class="bg-red-900/30 hover:bg-red-700 text-red-400 px-3 py-2 rounded-xl text-[9px] font-bold uppercase transition border border-red-500/50">✕</button>` : ''}
+            </div>
         </div>`;
     }).join('');
 }
@@ -696,6 +761,11 @@ function updatePickerList(cat) {
         if (mobo && mobo.specs && mobo.specs['supported-ram']) {
             filtered = filtered.filter(p => p.specs && p.specs['ram-type'] === mobo.specs['supported-ram']);
         }
+    } else if (cat === 'CPU Cooler') {
+        const cpu = selectedParts['CPU'];
+        if (cpu && cpu.specs && cpu.specs.socket) {
+            filtered = filtered.filter(p => p.specs && p.specs.socket === cpu.specs.socket);
+        }
     }
     
     filtered = filterProductsBySearch(filtered, searchTerm);
@@ -714,6 +784,14 @@ function confirmSelection(cat, id) {
     renderBuilderSlots();
     updateTotal();
     closeModal();
+}
+
+function removeItem(category) {
+    if (!confirm(`Remove ${category} from build?`)) return;
+    delete selectedParts[category];
+    saveBuilder();
+    renderBuilderSlots();
+    updateTotal();
 }
 
 function updateTotal() {
